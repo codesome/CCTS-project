@@ -127,6 +127,8 @@ double MV2PL::simulate() {
                             }
                         }
 
+                        break;
+
                     }
                 }
 

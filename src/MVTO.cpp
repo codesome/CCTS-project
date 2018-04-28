@@ -1,14 +1,14 @@
 #include <iostream>
 #include <vector>
 
-#include "MV2PL.h"
+#include "MVTO.h"
 
 int main(int argc, char const *argv[]) {
 
     int size, n_threads, ne, lambda;
     std::cin >> size >> n_threads >> ne >> lambda;
     srand(lambda);
-    MV2PL sched(n_threads);
+    MVTO sched(n_threads);
     char c;
 
     // reading the input
@@ -30,7 +30,7 @@ int main(int argc, char const *argv[]) {
 
     double avg_time = sched.simulate();
     
-    FILE *fp = fopen ("Average_time_MV2PL.txt", "w+");
+    FILE *fp = fopen ("Average_time_MVTO.txt", "w+");
     fprintf(fp, "Average Time: %.9lf seconds\n", avg_time/1e6);
     fclose(fp);
     printf("Average Time: %.9lf seconds\n", avg_time/1e6);
