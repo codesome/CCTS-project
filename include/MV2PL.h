@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 #include <unordered_set>
-#include "boost/thread/shared_mutex.hpp"
+// #include "boost/thread/shared_mutex.hpp"
 #include "common.h"
 
 class object {
@@ -17,7 +17,6 @@ public:
     // Should lock this while writing
     std::mutex write_lock;
 
-
 };
 
 object* new_object_ptr(int id) {
@@ -26,40 +25,47 @@ object* new_object_ptr(int id) {
     return obj;
 }
 
-// TODO: add t0 value by default
-
-// object id -> its object pointer
-std::map<int, object*> object_map;
-
-// object id -> list of version in the order that it is created
-std::map<int, std::vector<int>> object_version_list;
-// To protect addition in object_version_list
-// Read should hold this in shared mode
-// std::map<int, boost::shared_mutex> object_version_list_mtx;
-std::map<int, std::mutex> object_version_list_mtx;
-
-// You should add yourself in the list when you read a particular version
-std::map<int, std::mutex> i_read_this_mtx;
-std::map<int, std::vector<int>> i_read_this;
 
 class MV2PL {
 
-	int n_threads;
-	std::vector<transaction> trans;
+    int n_threads;
+    std::vector<transaction> trans;
 
 public:
-	void add_transaction(transaction t) {
-		trans.emplace_back(std::move(t));
-	}
+    void add_transaction(transaction t) {
+        trans.emplace_back(std::move(t));
+    }
 
-	MV2PL(int n_threads) : n_threads(n_threads) {}
+    MV2PL(int n_threads) : n_threads(n_threads) {}
 
     double simulate();
 
 };
 
 
+// object id -> its object pointer
+std::map<int, object*> object_map;
+
 double MV2PL::simulate() {
+
+    // DS!
+
+    // TODO: add t0 value by default
+
+
+    // object id -> list of version in the order that it is created
+    std::map<int, std::vector<int>> object_version_list;
+    // To protect addition in object_version_list
+    // Read should hold this in shared mode
+    // std::map<int, boost::shared_mutex> object_version_list_mtx;
+    std::map<int, std::mutex> object_version_list_mtx;
+
+    // You should add yourself in the list when you read a particular version
+    // list[i] means ith version - 0,1,2,....,n
+    std::vector<std::mutex> i_read_this_mtx(trans.size()+1);
+    std::vector<std::vector<int>> i_read_this(trans.size()+1);
+
+
 
     // used to get a transaction
     std::atomic_int p(0);
@@ -70,16 +76,16 @@ double MV2PL::simulate() {
         times[i] = 0;
     }
 
-    // Vector telling whether a transaction is committed
-    std::vector<std::atomic_bool> committed(trans.size()+1);
-    committed[0] = true;
-    for(int i=1; i<committed.size(); i++) {
-        committed[i].store(false);
+    // Vector telling whether a transaction is transaction_state
+    std::vector<std::atomic<state>> transaction_state(trans.size()+1);
+    transaction_state[0].store(COMMITTED);
+    for(int i=1; i<transaction_state.size(); i++) {
+        transaction_state[i].store(RUNNING);
     }
 
     FILE *fp = fopen ("MV2PL-log.txt", "w+");
 
-    auto task = [this, &p, &fp, &times, &committed](int thread_id) {
+    auto task = [this, &p, &fp, &times, &transaction_state, &object_version_list, &object_version_list_mtx, &i_read_this, &i_read_this_mtx](int thread_id) {
         int my_ptr = p++;
         while(my_ptr < this->trans.size()) {
             auto start_time = std::chrono::high_resolution_clock::now(); // start time
@@ -94,6 +100,34 @@ double MV2PL::simulate() {
 
                 if(i==size-1) {
                     // last step
+                    startover:
+                    while(true) {
+
+                        // 2 (a) from book
+
+                        // "current data item written by ti"
+                        for(auto i_wrote_this_current: current_versions_written) {
+                            i_read_this_mtx[i_wrote_this_current].lock();
+
+                            // "that tj read"
+                            for(auto this_read_current /*tj*/: i_read_this[i_wrote_this_current]) {
+                                if(transaction_state[this_read_current].load() != COMMITTED) {
+                                    i_read_this_mtx[i_wrote_this_current].unlock();
+                                    goto startover;
+                                }    
+                            }
+
+                            i_read_this_mtx[i_wrote_this_current].unlock();
+                        }
+
+                        // 2 (b) from book
+                        for(auto i_read /*tj*/: versions_read) {
+                            if(transaction_state[i_read].load() != COMMITTED) {
+                                goto startover;
+                            }
+                        }
+
+                    }
                 }
 
                 if(e.is_write) {
@@ -143,7 +177,7 @@ double MV2PL::simulate() {
                 object_map[o]->write_lock.unlock();
             }
 
-            committed[t.getid()].store(true);
+            transaction_state[t.getid()].store(COMMITTED);
         
             auto stop_time = std::chrono::high_resolution_clock::now(); // end time
             double micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(stop_time-start_time).count();
