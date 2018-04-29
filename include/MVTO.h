@@ -4,6 +4,7 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 #include <unordered_set>
@@ -65,8 +66,15 @@ double MVTO::simulate() {
     std::map<int, std::vector<op_ts>> obj_read_ops;
     // object id -> all transaction that wrote it
     std::map<int, std::vector<op_ts>> obj_write_ops;
+    for(auto& p: object_map) {
+        std::vector<op_ts> v;
+        v.emplace_back(0,0);
+        obj_read_ops.emplace(p.first, std::vector<op_ts>());
+        obj_write_ops.emplace(p.first, std::move(v));
+    }
 
     std::vector<unsigned int> trans_timestamps(trans.size()+1);
+    trans_timestamps[0] = 0;
 
     // used to get a transaction
     std::atomic_int p(0);
@@ -110,12 +118,14 @@ double MVTO::simulate() {
                         int j = ops.my_tid;
                         int k = ops.version;
                         if(trans_timestamps[k] < trans_timestamps[t.getid()] && trans_timestamps[t.getid()] < trans_timestamps[j]) {
+                            t.abort(thread_id, fp);
                             transaction_state[t.getid()].store(ABORTED);
                             break;
                         }
                     }
 
                     obj_write_ops[e.object_id].emplace_back(t.getid(), t.getid());
+                    e.print_event_message(thread_id, t.getid(), t.getid(), fp);
                 } else {
                     // (1) in book
                     // READ
@@ -129,30 +139,36 @@ double MVTO::simulate() {
                     }
 
                     versions_read.emplace(version_read);
-
                     obj_read_ops[e.object_id].emplace_back(t.getid(), version_read);
+                    e.print_event_message(thread_id, t.getid(), version_read, fp);
 
                 }
                 
                 object_map[e.object_id]->lock.unlock();
             }
 
-            bool end = false;
             // (3) in book
-            while(!end) {
-                for(auto tid: versions_read) {
-                    if(transaction_state[tid]==ABORTED) {
-                        transaction_state[t.getid()] == ABORTED;
-                        end = true;
-                        break;
-                    }
-                    if(transaction_state[tid]==RUNNING) {
-                        break;
+            if(transaction_state[t.getid()] == RUNNING) {
+                bool end = false;
+                while(!end) {
+                    end = true;
+                    for(auto tid: versions_read) {
+                        if(transaction_state[tid]==ABORTED) {
+                            t.abort(thread_id, fp);
+                            transaction_state[t.getid()].store(ABORTED);
+                            end = true;
+                            break;
+                        }
+                        if(transaction_state[tid]==RUNNING) {
+                            end = false;
+                            break;
+                        }
                     }
                 }
             }
 
             if(transaction_state[t.getid()].load() == RUNNING) {
+                t.commit(thread_id, fp);
                 transaction_state[t.getid()].store(COMMITTED);
             }
         

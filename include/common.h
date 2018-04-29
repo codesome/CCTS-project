@@ -17,12 +17,12 @@ struct event {
     
     event(bool is_write, int object_id): is_write(is_write), object_id(object_id) {}
     
-    void print_event_message(int tid, int trans_id, FILE *fp) {
+    void print_event_message(int tid, int trans_id, int version, FILE *fp) {
         if(is_write) {
-            fprintf(fp, "Writing %c by transaction %d which is invoked by thread %d\n", object_id, trans_id, tid );
+            fprintf(fp, "W%d(%c_%d) by thread %d\n", trans_id, object_id, trans_id, tid);
             fflush(fp);
         } else {
-            fprintf(fp, "Reading %c by transaction %d which is invoked by thread %d\n", object_id, trans_id, tid );
+            fprintf(fp, "R%d(%c_%d) by thread %d\n", trans_id, object_id, version, tid);
             fflush(fp);
         }
     }
@@ -72,8 +72,13 @@ public:
         return events.end();
     }
 
-    void commit(FILE *fp) {
-        fprintf(fp, "Commit transaction %d\n", tid);
+    void commit(int thid, FILE *fp) {
+        fprintf(fp, "c%d by thread %d\n", tid, thid);
+        fflush(fp);
+    }
+
+    void abort(int thid, FILE *fp) {
+        fprintf(fp, "a%d by thread %d\n", tid, thid);
         fflush(fp);
     }
 
