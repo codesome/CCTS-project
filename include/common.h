@@ -11,6 +11,12 @@ enum state {
     ABORTED=2
 };
 
+enum phase {
+    READ=0, 
+    WAIT=1, 
+    WRITE=2
+};
+
 struct event {
     bool is_write;
     int object_id;
@@ -34,6 +40,7 @@ class transaction {
     std::vector<event> events;
     std::set<int> unique_objs, read_set, write_set;
     int tid;
+
 
 public:
     transaction(int tid): tid(tid) {}

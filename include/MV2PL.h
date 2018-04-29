@@ -25,6 +25,8 @@ object* new_object_ptr(int id) {
     return obj;
 }
 
+// object id -> its object pointer
+std::map<int, object*> object_map;
 
 class MV2PL {
 
@@ -43,8 +45,6 @@ public:
 };
 
 
-// object id -> its object pointer
-std::map<int, object*> object_map;
 
 double MV2PL::simulate() {
 
@@ -59,12 +59,16 @@ double MV2PL::simulate() {
     // Read should hold this in shared mode
     // std::map<int, boost::shared_mutex> object_version_list_mtx;
     std::map<int, std::mutex> object_version_list_mtx;
+    for(auto& p: object_map) {
+        std::vector<int> v;
+        v.emplace_back(0);
+        object_version_list.emplace(p.first, std::move(v));
+    }
 
     // You should add yourself in the list when you read a particular version
     // list[i] means ith version - 0,1,2,....,n
     std::vector<std::mutex> i_read_this_mtx(trans.size()+1);
     std::vector<std::vector<int>> i_read_this(trans.size()+1);
-
 
 
     // used to get a transaction
@@ -93,6 +97,10 @@ double MV2PL::simulate() {
 
             std::unordered_set<int> current_versions_written;
             std::unordered_set<int> versions_read;
+
+            for(auto o: t.get_write_set()) {
+                object_map[o]->write_lock.lock();
+            }
 
             int size = t.size();
             for(int i=0; i<size; i++) {
@@ -136,7 +144,7 @@ double MV2PL::simulate() {
                     // WRITE
 
                     // This is the write lock
-                    object_map[e.object_id]->write_lock.lock();
+                    // object_map[e.object_id]->write_lock.lock();
 
                     object_version_list_mtx[e.object_id].lock();
 
