@@ -27,6 +27,7 @@ int main(int argc, char const *argv[]) {
             t.add_event(is_write, c);
         }
         sched.add_transaction(t);
+        // sched.priorities.push_back(rand()%100);            
         if (i==0) {
             sched.priorities.push_back(10);
         } else {

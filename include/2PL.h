@@ -67,6 +67,7 @@ public:
 
         for(auto t: obj->wlock_list) {
             if(priorities[t] > priorities[T] || in_phase[t]==WRITE) {
+                obj->mtx.unlock();
                 return false;
             }
         }
@@ -189,6 +190,13 @@ double _2PL::simulate() {
 
             if(transaction_state[t.getid()].load()==ABORTED) {
                 printf("a %d\n", t.getid());
+                // remove myself from all read
+                for(auto o: t.get_read_set()) {
+                    remove_from_rlock_list(t.getid(), o);
+                }
+                for(auto o: t.get_write_set()) {
+                    remove_from_wlock_list(t.getid(), o);
+                }
                 t.abort(thread_id, fp);
             } else {
                 printf("c %d\n", t.getid());
@@ -209,9 +217,13 @@ double _2PL::simulate() {
                 for(auto o: t.get_write_set()) {
                     remove_from_wlock_list(t.getid(), o);
                 }
+
                 t.commit(thread_id, fp);
             }
 
+            for(auto tt: after_trans_set[t.getid()]) {
+                before_count[tt]--;
+            }
 
             // for(int uo: t.get_unique_objs()) {
             //     object_map[uo]->_2pl_mtx.unlock();
