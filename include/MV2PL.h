@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include <unordered_set>
+#include <unistd.h>
 // #include "boost/thread/shared_mutex.hpp"
 #include "common.h"
 
@@ -47,11 +48,6 @@ public:
 
 
 double MV2PL::simulate() {
-
-    // DS!
-
-    // TODO: add t0 value by default
-
 
     // object id -> list of version in the order that it is created
     std::map<int, std::vector<int>> object_version_list;
@@ -119,10 +115,10 @@ double MV2PL::simulate() {
 
                             // "that tj read"
                             for(auto this_read_current /*tj*/: i_read_this[i_wrote_this_current]) {
-                                if(transaction_state[this_read_current].load() != COMMITTED) {
+                                if(this_read_current != t.getid() && transaction_state[this_read_current].load() != COMMITTED) {
                                     i_read_this_mtx[i_wrote_this_current].unlock();
                                     goto startover;
-                                }    
+                                }
                             }
 
                             i_read_this_mtx[i_wrote_this_current].unlock();
@@ -144,12 +140,13 @@ double MV2PL::simulate() {
                     // WRITE
 
                     // This is the write lock
-                    // object_map[e.object_id]->write_lock.lock();
+                    object_map[e.object_id]->write_lock.lock();
 
                     object_version_list_mtx[e.object_id].lock();
 
                     // Current version that it writes
                     current_versions_written.emplace(object_version_list[e.object_id].back());
+                    e.print_event_message(thread_id, t.getid(), t.getid(), fp);
 
                     // Adding uncommitted version
                     object_version_list[e.object_id].push_back(t.getid());
@@ -170,6 +167,9 @@ double MV2PL::simulate() {
                     // I should wait for this version to finish
                     versions_read.emplace(read_version);
                     
+                    e.print_event_message(thread_id, t.getid(), read_version, fp);
+                    
+
                     // I read this current version
                     // uncommitted version will wait for me
                     i_read_this_mtx[read_version].lock();
@@ -178,15 +178,18 @@ double MV2PL::simulate() {
                     
                     // object_version_list_mtx[e.object_id].unlock_shared();
                 }
+
+                usleep(100*(rand()%100));
+                
             }
 
-            // TODO: handle last step
 
             // Releasing all write locks
             for(auto o: t.get_write_set()) {
                 object_map[o]->write_lock.unlock();
             }
 
+            t.commit(thread_id, fp);
             transaction_state[t.getid()].store(COMMITTED);
         
             auto stop_time = std::chrono::high_resolution_clock::now(); // end time

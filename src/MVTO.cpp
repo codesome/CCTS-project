@@ -33,7 +33,9 @@ int main(int argc, char const *argv[]) {
     FILE *fp = fopen ("Average_time_MVTO.txt", "w+");
     fprintf(fp, "Average Time: %.9lf seconds\n", avg_time/1e6);
     fclose(fp);
-    printf("Average Time: %.9lf seconds\n", avg_time/1e6);
+    printf("Avg. Time: %.9lf\n", avg_time/1e6);
+    printf("Committed: %d\n", sched.commit_count());
+    printf("Aborted: %d\n", sched.abort_count());
 
     return 0;
 }

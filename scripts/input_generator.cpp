@@ -28,9 +28,12 @@ int main(int argc, char const *argv[]) {
     		objs.insert(ele);
     	}
 	    
-	    uniform_int_distribution<> uidx(1,n_ops/2);
-	    int pivot = uidx(engine);
-
+	    // uniform_int_distribution<> uidx(1,n_ops/2);
+	    int pivot = n_ops/2;
+		if(n_ops + n_ops - pivot -1 <= 0) {
+			i--;
+			continue;
+		}
     	printf("%d ", n_ops + n_ops - pivot -1 );
     	for(int i: objs) {
     		printf("0 %c ",i );

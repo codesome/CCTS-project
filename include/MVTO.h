@@ -8,6 +8,7 @@
 #include <thread>
 #include <vector>
 #include <unordered_set>
+#include <unistd.h>
 // #include "boost/thread/shared_mutex.hpp"
 #include "common.h"
 
@@ -34,12 +35,19 @@ class MVTO {
     int n_threads;
     std::vector<transaction> trans;
 
+
 public:
+    MVTO(int n_threads) : n_threads(n_threads) {}
+    
+    
+    std::atomic_int n_commit, n_abort;
+    int commit_count() { return n_commit.load(); }
+    int abort_count() { return n_abort.load(); }
+
     void add_transaction(transaction t) {
         trans.emplace_back(std::move(t));
     }
 
-    MVTO(int n_threads) : n_threads(n_threads) {}
 
     double simulate();
 
@@ -57,6 +65,8 @@ struct op_ts {
 std::map<int, object*> object_map;
 
 double MVTO::simulate() {
+    n_commit.store(0);
+    n_abort.store(0);
 
     // DS!
 
@@ -113,7 +123,6 @@ double MVTO::simulate() {
                 if(e.is_write) {
                     // (2) in book
                     // WRITE
-
                     for(auto ops: obj_read_ops[e.object_id]) {
                         int j = ops.my_tid;
                         int k = ops.version;
@@ -145,6 +154,7 @@ double MVTO::simulate() {
                 }
                 
                 object_map[e.object_id]->lock.unlock();
+                usleep(100*(rand()%100));
             }
 
             // (3) in book
@@ -168,14 +178,19 @@ double MVTO::simulate() {
             }
 
             if(transaction_state[t.getid()].load() == RUNNING) {
+                n_commit++;
                 t.commit(thread_id, fp);
                 transaction_state[t.getid()].store(COMMITTED);
+            } else {
+                n_abort++;
+                t.abort(thread_id, fp);
             }
         
             auto stop_time = std::chrono::high_resolution_clock::now(); // end time
             double micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(stop_time-start_time).count();
             times[thread_id] += micro_sec;
             my_ptr = p++;
+
 
         }
     };

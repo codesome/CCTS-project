@@ -15,6 +15,10 @@ add_executable(MVTO
 	src/MVTO.cpp
 )
 
+add_executable(PriorityLocking
+	src/PriorityLocking.cpp
+)
+
 add_executable(2PL
 	src/2PL.cpp
 )
@@ -22,6 +26,7 @@ add_executable(2PL
 
 target_link_libraries (MV2PL pthread)
 target_link_libraries (MVTO pthread)
+target_link_libraries (PriorityLocking pthread)
 target_link_libraries (2PL pthread)
 
 include_directories("./include")

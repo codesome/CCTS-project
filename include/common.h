@@ -32,6 +32,15 @@ struct event {
             fflush(fp);
         }
     }
+    void print_mono_event_message(int tid, int trans_id, FILE *fp) {
+        if(is_write) {
+            fprintf(fp, "W%d(%c) by thread %d\n", trans_id, object_id, tid);
+            fflush(fp);
+        } else {
+            fprintf(fp, "R%d(%c) by thread %d\n", trans_id, object_id, tid);
+            fflush(fp);
+        }
+    }
 };
 
 
@@ -86,11 +95,6 @@ public:
 
     void abort(int thid, FILE *fp) {
         fprintf(fp, "a%d by thread %d\n", tid, thid);
-        fflush(fp);
-    }
-
-    void abort(FILE *fp) {
-        fprintf(fp, "Abort transaction %d\n", tid);
         fflush(fp);
     }
 

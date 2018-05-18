@@ -8,6 +8,7 @@
 #include <deque>
 #include <atomic>
 #include <unordered_set>
+#include <unistd.h>
 #include "common.h"
 
 class object {
@@ -32,7 +33,7 @@ object* new_object_ptr(int id) {
 // object id -> its object pointer
 std::map<int, object*> object_map;
 
-class _2PL{
+class PriorityLocking{
 
 	int n_threads;
 	std::vector<transaction> trans;
@@ -41,7 +42,11 @@ class _2PL{
 
 public:
 
-	_2PL(int n_threads) : n_threads(n_threads) {}
+	PriorityLocking(int n_threads) : n_threads(n_threads) {}
+
+    std::atomic_int n_commit, n_abort;
+    int commit_count() { return n_commit.load(); }
+    int abort_count() { return n_abort.load(); }
 
 	void add_transaction(transaction t) {
 		trans.emplace_back(std::move(t));
@@ -66,6 +71,7 @@ public:
         obj->rlock_list.emplace(T);
 
         for(auto t: obj->wlock_list) {
+            if(t==T) continue;
             if(priorities[t] > priorities[T] || in_phase[t]==WRITE) {
                 obj->mtx.unlock();
                 return false;
@@ -73,6 +79,7 @@ public:
         }
 
         for(auto t: obj->wlock_list) {
+            if(t==T) continue;
             if(before_trans_set[T].find(t)!=before_trans_set[T].end()) {
                 transaction_state[t].store(ABORTED);
             } else if (after_trans_set[T].find(t) == after_trans_set[T].end()) {
@@ -106,6 +113,7 @@ public:
         obj->wlock_list.emplace(T);
 
         for(auto t: obj->rlock_list) {
+            if(t==T) continue;
             if(priorities[t] > priorities[T]) {
                 if (after_trans_set[t].find(T) == after_trans_set[t].end()) {
                     after_trans_set[t].emplace(T);
@@ -131,7 +139,9 @@ public:
 };
 
 
-double _2PL::simulate() {
+double PriorityLocking::simulate() {
+    n_commit.store(0);
+    n_abort.store(0);
 
     std::vector<std::atomic<state>> transaction_state(trans.size()+1);
     std::vector<std::atomic_int> before_count(trans.size()+1);
@@ -155,7 +165,7 @@ double _2PL::simulate() {
 
     std::atomic_int p(0);
 
-    FILE *fp = fopen ("2PL-log.txt", "w+");
+    FILE *fp = fopen ("PriorityLocking-log.txt", "w+");
 
     std::vector<double> times(n_threads);
     for (int i=0; i<n_threads; i++) {
@@ -180,16 +190,16 @@ double _2PL::simulate() {
                 }
 
                 if(!e.is_write) {
-                    e.print_event_message(thread_id, t.getid(), 0, fp);
+                    e.print_mono_event_message(thread_id, t.getid(), fp);
+                    usleep(100*(rand()%100));
                 }
             }
 
             in_phase[t.getid()] = WAIT;
-            printf("w %d\n", t.getid());
             while(before_count[t.getid()].load() && transaction_state[t.getid()].load()!=ABORTED) {}
 
             if(transaction_state[t.getid()].load()==ABORTED) {
-                printf("a %d\n", t.getid());
+                n_abort++;
                 // remove myself from all read
                 for(auto o: t.get_read_set()) {
                     remove_from_rlock_list(t.getid(), o);
@@ -199,7 +209,7 @@ double _2PL::simulate() {
                 }
                 t.abort(thread_id, fp);
             } else {
-                printf("c %d\n", t.getid());
+                n_commit++;
 
                 // remove myself from all read
                 for(auto o: t.get_read_set()) {
@@ -209,7 +219,8 @@ double _2PL::simulate() {
                 in_phase[t.getid()] = WRITE;
                 for(event e: t) {
                     if(e.is_write) {
-                        e.print_event_message(thread_id, t.getid(), 0, fp);                    
+                        e.print_mono_event_message(thread_id, t.getid(), fp);                    
+                        usleep(100*(rand()%100));
                     }
                 }
 
